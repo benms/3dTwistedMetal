@@ -1,0 +1,172 @@
+.results-modal {
+  width: min(740px, calc(100vw - 40px));
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 28px 32px;
+  scrollbar-color: #758363 #19251d;
+}
+
+.results-modal h2 {
+  font-size: 52px;
+  margin: 12px 0;
+}
+.results-modal > p {
+  margin-bottom: 12px;
+}
+.results-modal .result-stats {
+  padding: 13px 0;
+  margin: 14px 0 18px;
+}
+.results-modal .result-stats strong {
+  font-size: 29px;
+}
+.results-modal .result-stats > div:last-child strong {
+  font-size: 23px;
+  padding-top: 6px;
+}
+.results-modal .primary {
+  padding: 14px 19px;
+}
+.results-modal .secondary {
+  padding: 12px;
+  margin-top: 9px;
+}
+
+.scoreboard {
+  margin: 0 0 19px;
+}
+.scoreboard-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  gap: 12px;
+}
+.scoreboard-heading h3 {
+  margin: 0;
+  font: 600 11px monospace;
+  letter-spacing: 1.6px;
+  color: var(--amber);
+}
+.scoreboard-heading > span {
+  font: 8px monospace;
+  letter-spacing: 1px;
+  color: #a9b59d;
+}
+.scoreboard-scroll {
+  overflow-x: auto;
+  scrollbar-color: #758363 #19251d;
+  border: 1px solid #91a17b30;
+}
+.scoreboard-table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 440px;
+  font: 11px monospace;
+  color: #c6d0b8;
+}
+.scoreboard-table thead th {
+  padding: 9px 10px;
+  text-align: left;
+  font: 8px monospace;
+  letter-spacing: 0.8px;
+  color: #9fab90;
+  background: #101b1766;
+  white-space: nowrap;
+}
+.scoreboard-table thead th:nth-child(3),
+.scoreboard-table thead th:nth-child(4) {
+  text-align: right;
+}
+.scoreboard-table tbody td,
+.scoreboard-table tbody th {
+  padding: 8px 10px;
+  border-top: 1px solid #8b9b7626;
+}
+.scoreboard-table tbody tr:nth-child(even) {
+  background: #10201733;
+}
+.scoreboard-table .scoreboard-rank {
+  width: 32px;
+  color: #8b9c7b;
+}
+.scoreboard-table .scoreboard-driver {
+  text-align: left;
+  font: 600 17px/1.1 var(--display);
+  letter-spacing: 0.5px;
+}
+.scoreboard-driver small {
+  display: block;
+  margin-top: 4px;
+  font: 7px monospace;
+  letter-spacing: 1px;
+  color: #93a486;
+}
+.scoreboard-table .scoreboard-number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.scoreboard-table tbody tr.is-player {
+  background: #edb65b12;
+  color: #f4d599;
+}
+.scoreboard-table tr.is-player .scoreboard-rank {
+  border-left: 2px solid var(--amber);
+  color: var(--amber);
+  padding-left: 8px;
+}
+.scoreboard-table tr.is-player .scoreboard-driver small {
+  color: #c5b780;
+}
+.scoreboard-status {
+  display: inline-block;
+  white-space: nowrap;
+  padding: 4px 6px;
+  font: 7px monospace;
+  letter-spacing: 0.7px;
+  border: 1px solid #9cab8733;
+}
+.scoreboard-status.survived {
+  background: #8ed6ae0a;
+  color: #a9d9b4;
+  border-color: #8ed6ae44;
+}
+.scoreboard-status.wrecked {
+  background: #ac704709;
+  color: #bca38a;
+}
+.results-modal .scoreboard-note {
+  font: 8px/1.5 monospace;
+  color: #98a78b;
+  margin: 9px 0 0;
+}
+
+@media (max-width: 600px) {
+  .results-modal {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
+    padding: 22px 18px;
+  }
+  .results-modal h2 {
+    font-size: 44px;
+  }
+  .scoreboard-heading h3 {
+    font-size: 9px;
+  }
+  .scoreboard-heading > span {
+    font-size: 7px;
+  }
+  .scoreboard-table {
+    min-width: 410px;
+  }
+  .scoreboard-table thead th,
+  .scoreboard-table tbody td,
+  .scoreboard-table tbody th {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+}
