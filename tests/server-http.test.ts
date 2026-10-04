@@ -10,7 +10,7 @@ const ORIGIN = 'http://localhost:5173';
 let app: App | undefined;
 
 async function start(env: Record<string, string> = {}): Promise<number> {
-  app = createApp(loadConfig({ SHUTDOWN_GRACE_MS: '1000', ...env }), silentLogger);
+  app = createApp(loadConfig({ WRECKYARD_SHUTDOWN_GRACE_MS: '1000', ...env }), silentLogger);
   return app.listen(0, '127.0.0.1');
 }
 

@@ -5,12 +5,12 @@ services:
     build: .
     image: wreckyard-server
     ports:
-      - '${SERVER_PORT:-8787}:8787'
+      - '${WRECKYARD_SERVER_PORT:-8787}:8787'
     environment:
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      MAX_ROOMS: ${MAX_ROOMS:-50}
-      SNAPSHOT_HZ: ${SNAPSHOT_HZ:-20}
-      MAX_MSG_PER_SEC: ${MAX_MSG_PER_SEC:-120}
-      SHUTDOWN_GRACE_MS: ${SHUTDOWN_GRACE_MS:-5000}
+      WRECKYARD_ALLOWED_ORIGINS: ${WRECKYARD_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173}
+      WRECKYARD_LOG_LEVEL: ${WRECKYARD_LOG_LEVEL:-info}
+      WRECKYARD_MAX_ROOMS: ${WRECKYARD_MAX_ROOMS:-50}
+      WRECKYARD_SNAPSHOT_HZ: ${WRECKYARD_SNAPSHOT_HZ:-20}
+      WRECKYARD_MAX_MSG_PER_SEC: ${WRECKYARD_MAX_MSG_PER_SEC:-120}
+      WRECKYARD_SHUTDOWN_GRACE_MS: ${WRECKYARD_SHUTDOWN_GRACE_MS:-5000}
     stop_grace_period: 10s

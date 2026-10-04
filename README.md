@@ -36,7 +36,7 @@ npm run dev:server    # game server on :8787, restarts on changes
 
 Open two browser windows, create a room in one and join with its code in the other.
 To feel the netcode under a bad connection, start the server with simulated latency,
-e.g. `LAG_MS=120 JITTER_MS=30 npm run dev:server` (bash).
+e.g. `WRECKYARD_LAG_MS=120 WRECKYARD_JITTER_MS=30 npm run dev:server` (bash).
 
 ```sh
 npm test              # simulation, netcode, rooms, server config/HTTP, UI state
@@ -94,21 +94,24 @@ five-bot match.
 ## Configuration
 
 Configuration comes only from environment variables ([12-factor](https://12factor.net/config)).
-`.env.example` lists every variable. `server/config.ts` validates them at startup,
+All of Wreckyard's own variables start with `WRECKYARD_` (the client's with
+`VITE_WRECKYARD_`, because Vite only exposes `VITE_` variables), so they cannot clash
+with other services sharing a host or environment group. Only the platform-standard
+`PORT` and `NODE_ENV` are unprefixed. `.env.example` lists every variable. `server/config.ts` validates them at startup,
 and the server exits with a clear message on bad values.
 
-| Variable              | Used by                   | Default                       | Purpose                                                                                                                                                                              |
-| --------------------- | ------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `VITE_SERVER_URL`     | client, **at build time** | unset                         | Game server URL, e.g. `wss://wreckyard-server.onrender.com` (`https://` also works; `/ws` is added). Unset in dev: Vite proxy. Unset in a production build: online play is disabled. |
-| `PORT`                | server                    | `8787`                        | Listen port. Render injects it.                                                                                                                                                      |
-| `ALLOWED_ORIGINS`     | server                    | localhost dev/preview origins | Comma-separated browser origins allowed to connect. **Required in production.** `https://*.vercel.app` allows one subdomain level; `*` allows any.                                   |
-| `MAX_ROOMS`           | server                    | `50`                          | Concurrent room cap.                                                                                                                                                                 |
-| `SNAPSHOT_HZ`         | server                    | `20`                          | Snapshot rate, 1–60.                                                                                                                                                                 |
-| `MAX_MSG_PER_SEC`     | server                    | `120`                         | Per-socket rate limit (minimum 70).                                                                                                                                                  |
-| `LOG_LEVEL`           | server                    | `info`                        | `debug`, `info`, `warn` or `error`. Logs are JSON lines on stdout.                                                                                                                   |
-| `SHUTDOWN_GRACE_MS`   | server                    | `5000`                        | On SIGTERM, how long to wait for sockets to close after players are told the server is restarting.                                                                                   |
-| `LAG_MS`, `JITTER_MS` | server                    | `0`                           | Simulated one-way latency for local testing. Rejected when `NODE_ENV=production`.                                                                                                    |
-| `SERVER_PORT`         | Vite dev proxy            | `8787`                        | Where `npm run dev` forwards `/ws`.                                                                                                                                                  |
+| Variable                                  | Used by                   | Default                       | Purpose                                                                                                                                                                              |
+| ----------------------------------------- | ------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `VITE_WRECKYARD_SERVER_URL`               | client, **at build time** | unset                         | Game server URL, e.g. `wss://wreckyard-server.onrender.com` (`https://` also works; `/ws` is added). Unset in dev: Vite proxy. Unset in a production build: online play is disabled. |
+| `PORT`                                    | server                    | `8787`                        | Listen port. Render injects it.                                                                                                                                                      |
+| `WRECKYARD_ALLOWED_ORIGINS`               | server                    | localhost dev/preview origins | Comma-separated browser origins allowed to connect. **Required in production.** `https://*.vercel.app` allows one subdomain level; `*` allows any.                                   |
+| `WRECKYARD_MAX_ROOMS`                     | server                    | `50`                          | Concurrent room cap.                                                                                                                                                                 |
+| `WRECKYARD_SNAPSHOT_HZ`                   | server                    | `20`                          | Snapshot rate, 1–60.                                                                                                                                                                 |
+| `WRECKYARD_MAX_MSG_PER_SEC`               | server                    | `120`                         | Per-socket rate limit (minimum 70).                                                                                                                                                  |
+| `WRECKYARD_LOG_LEVEL`                     | server                    | `info`                        | `debug`, `info`, `warn` or `error`. Logs are JSON lines on stdout.                                                                                                                   |
+| `WRECKYARD_SHUTDOWN_GRACE_MS`             | server                    | `5000`                        | On SIGTERM, how long to wait for sockets to close after players are told the server is restarting.                                                                                   |
+| `WRECKYARD_LAG_MS`, `WRECKYARD_JITTER_MS` | server                    | `0`                           | Simulated one-way latency for local testing. Rejected when `NODE_ENV=production`.                                                                                                    |
+| `WRECKYARD_SERVER_PORT`                   | Vite dev proxy            | `8787`                        | Where `npm run dev` forwards `/ws`.                                                                                                                                                  |
 
 The server does not read `.env` files. Export variables in your shell, or use
 `docker compose`, which passes them through.
@@ -119,7 +122,7 @@ The client and server deploy separately from this one repository.
 
 **Server → Render (Docker).** In Render choose _New → Blueprint_ and select this
 repository; `render.yaml` defines a Docker web service with `healthCheckPath:
-/healthz`. Set `ALLOWED_ORIGINS` to your Vercel URL (for example
+/healthz`. Set `WRECKYARD_ALLOWED_ORIGINS` to your Vercel URL (for example
 `https://wreckyard.vercel.app`). Add `,https://*.vercel.app` only if preview
 deployments should connect; that allows any project on `vercel.app`. Render
 provides TLS, so clients use `wss://<service>.onrender.com`.
@@ -128,11 +131,11 @@ The `Dockerfile` builds in two stages. The runtime image has Node plus one bundl
 file (`ws` and the simulation are inlined), runs as the non-root `node` user, has a
 `HEALTHCHECK`, and keeps Node as PID 1. On SIGTERM the server stops accepting
 connections and fails its health check. It sends every player a "server restarting"
-notice, then exits within `SHUTDOWN_GRACE_MS`.
+notice, then exits within `WRECKYARD_SHUTDOWN_GRACE_MS`.
 
 **Client → Vercel (static).** Import the repository; `vercel.json` sets the Vite build
 (`npm run build` → `dist/`) and long-lived caching for hashed assets. In _Settings →
-Environment Variables_ set `VITE_SERVER_URL` to the Render URL for Production (and
+Environment Variables_ set `VITE_WRECKYARD_SERVER_URL` to the Render URL for Production (and
 Preview, if allowed above), then redeploy: Vite bakes the value into the bundle at
 build time.
 
@@ -209,7 +212,7 @@ hit it within the previous 5 seconds; otherwise the yard takes the credit.
   validation and snapshot encoding (shared with the server). `client.ts` is the
   socket with wake-up retries and ping; `prediction.ts` predicts and reconciles your
   car; `interpolation.ts` buffers and plays back snapshots; `session.ts` ties them
-  together; `endpoint.ts` resolves `VITE_SERVER_URL`.
+  together; `endpoint.ts` resolves `VITE_WRECKYARD_SERVER_URL`.
 - `server/` is the authoritative Node server. `room.ts` handles seats, the input
   queue, ticks and snapshots; `rooms.ts` handles room codes, message routing and rate
   limiting; `app.ts` covers HTTP `/healthz`, the WebSocket upgrade with origin
@@ -234,14 +237,14 @@ Verified on 2026-10-03 with Node.js 22.23 and npm 10.9 on Windows 11:
   real server).
 - `npm run typecheck`, `npm run build` and `npm run build:server` pass. The server
   bundle runs standalone with no `node_modules`. In production mode it refuses to
-  start without `ALLOWED_ORIGINS`, serves `/healthz`, and answers a foreign
+  start without `WRECKYARD_ALLOWED_ORIGINS`, serves `/healthz`, and answers a foreign
   `Origin` with 403.
 - In a Chromium-based browser, the garage, HUD, weapon-switch notice and results
   scoreboard render without console errors.
 - Online, through the Vite proxy, these were exercised: create/join by code, lobby,
   host start with bot fill, two humans in one match, spectating after a wreck,
   results, back-to-lobby rematch, leave room, the connection-lost screen, and the
-  non-pausing menu. With `LAG_MS=120 JITTER_MS=30` (about 280 ms RTT) your car
+  non-pausing menu. With `WRECKYARD_LAG_MS=120 WRECKYARD_JITTER_MS=30` (about 280 ms RTT) your car
   responds immediately. Prediction matches the server to within a few millimetres
   except when an input arrives too late for its tick. Those corrections (one or
   two ticks of movement) glide out with no visible pop beyond 4 cm per frame.
@@ -249,7 +252,7 @@ Verified on 2026-10-03 with Node.js 22.23 and npm 10.9 on Windows 11:
 - With Docker Desktop 29.8 these were verified:
   - the image builds with 0 audit vulnerabilities and runs as `node` with no
     `node_modules`
-  - without `ALLOWED_ORIGINS` it exits with code 1
+  - without `WRECKYARD_ALLOWED_ORIGINS` it exits with code 1
   - it binds an injected `PORT` (10000, like Render)
   - the `HEALTHCHECK` reports healthy
   - a production client build plays an online match against `docker compose`

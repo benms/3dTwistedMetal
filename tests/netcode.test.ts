@@ -11,7 +11,8 @@ const page = { protocol: 'https:', host: 'wreckyard.vercel.app' };
 
 describe('server endpoint', () => {
   it('uses the configured server, normalizing scheme and path', () => {
-    const url = (VITE_SERVER_URL: string) => serverUrl({ VITE_SERVER_URL, DEV: false }, page);
+    const url = (VITE_WRECKYARD_SERVER_URL: string) =>
+      serverUrl({ VITE_WRECKYARD_SERVER_URL, DEV: false }, page);
     expect(url('wss://wy.onrender.com/ws')).toBe('wss://wy.onrender.com/ws');
     expect(url('https://wy.onrender.com')).toBe('wss://wy.onrender.com/ws');
     expect(url('https://wy.onrender.com/')).toBe('wss://wy.onrender.com/ws');
@@ -23,7 +24,7 @@ describe('server endpoint', () => {
     expect(serverUrl({ DEV: true }, { protocol: 'http:', host: 'localhost:5173' })).toBe(
       'ws://localhost:5173/ws',
     );
-    expect(serverUrl({ DEV: false, VITE_SERVER_URL: '  ' }, page)).toBeNull();
+    expect(serverUrl({ DEV: false, VITE_WRECKYARD_SERVER_URL: '  ' }, page)).toBeNull();
   });
   it('derives the health check URL from the socket URL', () => {
     expect(healthUrl('wss://wy.onrender.com/ws')).toBe('https://wy.onrender.com/healthz');

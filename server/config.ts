@@ -25,6 +25,14 @@ const ORIGIN_PATTERN = /^https?:\/\/(\*\.)?[a-z0-9-]+(\.[a-z0-9-]+)*(:\d{1,5})?$
 
 type Env = Record<string, string | undefined>;
 
+/**
+ * Wreckyard's own settings are namespaced so they cannot clash with other services that
+ * share a host or environment group. PORT and NODE_ENV keep their standard names because
+ * the platform and Node set them.
+ */
+export const ENV_PREFIX = 'WRECKYARD_';
+const ORIGINS_VAR = `${ENV_PREFIX}ALLOWED_ORIGINS`;
+
 function integer(env: Env, key: string, fallback: number, min: number, max: number): number {
   const raw = env[key]?.trim();
   if (!raw) return fallback;
@@ -35,13 +43,16 @@ function integer(env: Env, key: string, fallback: number, min: number, max: numb
 }
 
 function origins(env: Env, production: boolean): string[] {
-  const raw = env.ALLOWED_ORIGINS?.trim();
+  const raw = env[ORIGINS_VAR]?.trim();
   if (!raw) {
-    if (production)
-      throw new ConfigError(
-        'ALLOWED_ORIGINS is required in production, e.g. https://wreckyard.vercel.app.',
-      );
-    return DEV_ORIGINS;
+    if (!production) return DEV_ORIGINS;
+    // The unprefixed name was used before the rename; say so instead of failing silently.
+    const renamed = env.ALLOWED_ORIGINS?.trim()
+      ? ' ALLOWED_ORIGINS is set, but it was renamed and is no longer read.'
+      : '';
+    throw new ConfigError(
+      `${ORIGINS_VAR} is required in production, e.g. https://wreckyard.vercel.app.${renamed}`,
+    );
   }
   const list = raw
     .split(',')
@@ -50,7 +61,7 @@ function origins(env: Env, production: boolean): string[] {
   for (const origin of list)
     if (origin !== '*' && !ORIGIN_PATTERN.test(origin))
       throw new ConfigError(
-        `ALLOWED_ORIGINS entry "${origin}" must look like https://host[:port], https://*.domain or *.`,
+        `${ORIGINS_VAR} entry "${origin}" must look like https://host[:port], https://*.domain or *.`,
       );
   return list;
 }
@@ -58,24 +69,24 @@ function origins(env: Env, production: boolean): string[] {
 /** Read every setting once at startup; invalid values stop the process with a clear message. */
 export function loadConfig(env: Env): ServerConfig {
   const production = env.NODE_ENV === 'production';
-  const logLevel = (env.LOG_LEVEL?.trim().toLowerCase() || 'info') as LogLevel;
+  const logLevel = (env.WRECKYARD_LOG_LEVEL?.trim().toLowerCase() || 'info') as LogLevel;
   if (!LOG_LEVELS.includes(logLevel))
-    throw new ConfigError(`LOG_LEVEL must be one of ${LOG_LEVELS.join(', ')}.`);
-  const lagMs = integer(env, 'LAG_MS', 0, 0, 2000);
-  const jitterMs = integer(env, 'JITTER_MS', 0, 0, 2000);
+    throw new ConfigError(`WRECKYARD_LOG_LEVEL must be one of ${LOG_LEVELS.join(', ')}.`);
+  const lagMs = integer(env, 'WRECKYARD_LAG_MS', 0, 0, 2000);
+  const jitterMs = integer(env, 'WRECKYARD_JITTER_MS', 0, 0, 2000);
   if (production && (lagMs || jitterMs))
     throw new ConfigError(
-      'LAG_MS and JITTER_MS are for local testing and must be 0 in production.',
+      'WRECKYARD_LAG_MS and WRECKYARD_JITTER_MS are for local testing and must be 0 in production.',
     );
   return {
     production,
     port: integer(env, 'PORT', 8787, 0, 65535),
     allowedOrigins: origins(env, production),
-    maxRooms: integer(env, 'MAX_ROOMS', 50, 1, 10000),
-    snapshotHz: integer(env, 'SNAPSHOT_HZ', 20, 1, 60),
-    maxMessagesPerSecond: integer(env, 'MAX_MSG_PER_SEC', 120, 70, 10000),
+    maxRooms: integer(env, 'WRECKYARD_MAX_ROOMS', 50, 1, 10000),
+    snapshotHz: integer(env, 'WRECKYARD_SNAPSHOT_HZ', 20, 1, 60),
+    maxMessagesPerSecond: integer(env, 'WRECKYARD_MAX_MSG_PER_SEC', 120, 70, 10000),
     logLevel,
-    shutdownGraceMs: integer(env, 'SHUTDOWN_GRACE_MS', 5000, 0, 60000),
+    shutdownGraceMs: integer(env, 'WRECKYARD_SHUTDOWN_GRACE_MS', 5000, 0, 60000),
     lagMs,
     jitterMs,
   };

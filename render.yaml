@@ -13,15 +13,15 @@ services:
     envVars:
       # Your Vercel domain(s), comma separated, e.g. https://wreckyard.vercel.app
       # Add https://*.vercel.app only if preview deployments should reach this server.
-      - key: ALLOWED_ORIGINS
+      - key: WRECKYARD_ALLOWED_ORIGINS
         sync: false
-      - key: LOG_LEVEL
+      - key: WRECKYARD_LOG_LEVEL
         value: info
-      - key: MAX_ROOMS
+      - key: WRECKYARD_MAX_ROOMS
         value: '50'
-      - key: SNAPSHOT_HZ
+      - key: WRECKYARD_SNAPSHOT_HZ
         value: '20'
-      - key: MAX_MSG_PER_SEC
+      - key: WRECKYARD_MAX_MSG_PER_SEC
         value: '120'
-      - key: SHUTDOWN_GRACE_MS
+      - key: WRECKYARD_SHUTDOWN_GRACE_MS
         value: '5000'

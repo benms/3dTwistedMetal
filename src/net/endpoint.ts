@@ -1,5 +1,5 @@
 interface EndpointEnv {
-  VITE_SERVER_URL?: string;
+  VITE_WRECKYARD_SERVER_URL?: string;
   DEV: boolean;
 }
 interface PageLocation {
@@ -8,7 +8,7 @@ interface PageLocation {
 }
 
 /**
- * The game server's WebSocket URL. `VITE_SERVER_URL` may be given as ws(s):// or http(s)://,
+ * The game server's WebSocket URL. `VITE_WRECKYARD_SERVER_URL` may be given as ws(s):// or http(s)://,
  * with or without the `/ws` path. In development an unset value uses the Vite proxy on the
  * page's own origin; in a production build it disables online play.
  */
@@ -16,7 +16,7 @@ export function serverUrl(
   env: EndpointEnv = import.meta.env,
   location: PageLocation = window.location,
 ): string | null {
-  const configured = env.VITE_SERVER_URL?.trim();
+  const configured = env.VITE_WRECKYARD_SERVER_URL?.trim();
   if (!configured) {
     if (!env.DEV) return null;
     return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;

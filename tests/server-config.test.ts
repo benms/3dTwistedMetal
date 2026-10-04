@@ -20,8 +20,8 @@ describe('server configuration', () => {
   it('reads the platform port and a list of origins', () => {
     const config = loadConfig({
       PORT: '10000',
-      ALLOWED_ORIGINS: ' https://wreckyard.vercel.app/ , https://*.vercel.app',
-      LOG_LEVEL: 'WARN',
+      WRECKYARD_ALLOWED_ORIGINS: ' https://wreckyard.vercel.app/ , https://*.vercel.app',
+      WRECKYARD_LOG_LEVEL: 'WARN',
     });
     expect(config.port).toBe(10000);
     expect(config.logLevel).toBe('warn');
@@ -31,23 +31,41 @@ describe('server configuration', () => {
     for (const [env, name] of [
       [{ PORT: 'eighty' }, 'PORT'],
       [{ PORT: '70000' }, 'PORT'],
-      [{ SNAPSHOT_HZ: '0' }, 'SNAPSHOT_HZ'],
-      [{ MAX_MSG_PER_SEC: '30' }, 'MAX_MSG_PER_SEC'],
-      [{ LOG_LEVEL: 'loud' }, 'LOG_LEVEL'],
-      [{ ALLOWED_ORIGINS: 'wreckyard.vercel.app' }, 'ALLOWED_ORIGINS'],
+      [{ WRECKYARD_SNAPSHOT_HZ: '0' }, 'WRECKYARD_SNAPSHOT_HZ'],
+      [{ WRECKYARD_MAX_MSG_PER_SEC: '30' }, 'WRECKYARD_MAX_MSG_PER_SEC'],
+      [{ WRECKYARD_LOG_LEVEL: 'loud' }, 'WRECKYARD_LOG_LEVEL'],
+      [{ WRECKYARD_ALLOWED_ORIGINS: 'wreckyard.vercel.app' }, 'WRECKYARD_ALLOWED_ORIGINS'],
     ] as const) {
       expect(() => loadConfig(env)).toThrow(ConfigError);
       expect(() => loadConfig(env)).toThrow(name);
     }
   });
   it('requires explicit origins and no simulated lag in production', () => {
-    expect(() => loadConfig({ NODE_ENV: 'production' })).toThrow('ALLOWED_ORIGINS');
+    expect(() => loadConfig({ NODE_ENV: 'production' })).toThrow('WRECKYARD_ALLOWED_ORIGINS');
     expect(() =>
-      loadConfig({ NODE_ENV: 'production', ALLOWED_ORIGINS: 'https://a.app', LAG_MS: '100' }),
-    ).toThrow('LAG_MS');
+      loadConfig({
+        NODE_ENV: 'production',
+        WRECKYARD_ALLOWED_ORIGINS: 'https://a.app',
+        WRECKYARD_LAG_MS: '100',
+      }),
+    ).toThrow('WRECKYARD_LAG_MS');
     expect(
-      loadConfig({ NODE_ENV: 'production', ALLOWED_ORIGINS: 'https://a.app' }).production,
+      loadConfig({ NODE_ENV: 'production', WRECKYARD_ALLOWED_ORIGINS: 'https://a.app' }).production,
     ).toBe(true);
+  });
+  it('reads only WRECKYARD_-prefixed settings and explains the old origin name', () => {
+    const config = loadConfig({
+      ALLOWED_ORIGINS: 'https://old.app',
+      MAX_ROOMS: '3',
+      LOG_LEVEL: 'debug',
+    });
+    expect(config.allowedOrigins).not.toContain('https://old.app');
+    expect(config).toMatchObject({ maxRooms: 50, logLevel: 'info' });
+    expect(() =>
+      loadConfig({ NODE_ENV: 'production', ALLOWED_ORIGINS: 'https://old.app' }),
+    ).toThrow(
+      'WRECKYARD_ALLOWED_ORIGINS is required in production, e.g. https://wreckyard.vercel.app. ALLOWED_ORIGINS is set, but it was renamed',
+    );
   });
 });
 
