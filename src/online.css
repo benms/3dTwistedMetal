@@ -1,0 +1,242 @@
+/* Online play: entry dialog, lobby panel, connection status and spectating. */
+.offline.is-online {
+  color: #d5dccb;
+}
+.offline.is-online i {
+  background: var(--amber);
+  box-shadow: 0 0 9px #edb65b88;
+}
+
+.launch-card .online-button {
+  margin-top: 8px;
+  padding: 11px;
+}
+.launch-card .practice-button {
+  display: block;
+  width: 100%;
+  margin: 4px 0 0;
+  padding: 7px 0;
+  font: 9px monospace;
+  letter-spacing: 1.4px;
+  color: #bdc5ae;
+  text-align: center;
+}
+button:disabled {
+  opacity: 0.55;
+  filter: none;
+  transform: none;
+}
+
+/* The lobby replaces the hero headline while you are in a room. */
+.garage.in-lobby .hero-copy {
+  display: none;
+}
+.lobby-panel {
+  position: absolute;
+  left: 5%;
+  top: 15%;
+  width: min(420px, 90vw);
+}
+.lobby-panel .eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 9px;
+}
+.lobby-panel .live-dot {
+  margin-right: 0;
+  background: var(--amber);
+}
+.lobby-code-row {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  margin: 12px 0 4px;
+}
+#lobby-code {
+  font: 800 clamp(48px, 5vw, 84px) / 0.9 var(--display);
+  letter-spacing: 8px;
+  color: var(--amber);
+}
+.lobby-panel > p {
+  font-size: 12px;
+  color: #bdc4b3;
+  margin-bottom: 14px;
+}
+.lobby-players {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+  counter-reset: seat;
+}
+.lobby-players li {
+  counter-increment: seat;
+  display: grid;
+  grid-template-columns: 26px 1fr auto auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+  font: 600 16px var(--display);
+  letter-spacing: 1px;
+}
+.lobby-players li::before {
+  content: counter(seat, decimal-leading-zero);
+  font: 9px monospace;
+  color: #8f9a86;
+}
+.lobby-players li small {
+  font: 9px monospace;
+  letter-spacing: 1.2px;
+  color: #a9b29e;
+}
+.lobby-players li b {
+  font: 8px monospace;
+  letter-spacing: 1.2px;
+  color: var(--amber);
+}
+.lobby-players li.is-you .lobby-name {
+  color: var(--amber);
+}
+.lobby-players li.is-bot {
+  color: #7d8877;
+  font-weight: 400;
+}
+.lobby-players li.is-open {
+  color: #5f6a5b;
+  font-weight: 400;
+  font-style: italic;
+}
+.bot-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 10px;
+  font: 9px monospace;
+  letter-spacing: 1.4px;
+  color: #a3af95;
+}
+.bot-controls strong {
+  color: var(--amber);
+  font-size: 11px;
+  margin-left: 4px;
+}
+.bot-controls .text-button {
+  margin: 0;
+  padding: 6px 0;
+  font: 9px monospace;
+  letter-spacing: 1.4px;
+  color: #d5dccb;
+}
+.bot-controls .text-button:disabled {
+  color: #6b7865;
+}
+.lobby-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Entry dialog. */
+.online-modal h2 {
+  margin-bottom: 12px;
+}
+.field {
+  display: block;
+  font: 9px monospace;
+  letter-spacing: 1.6px;
+  color: #a3af95;
+  margin: 0 0 6px;
+}
+.text-field {
+  display: block;
+  width: 100%;
+  background: #0f1813;
+  color: #eee9dd;
+  border: 1px solid #89947955;
+  padding: 12px 13px;
+  font: 600 18px var(--display);
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+}
+.text-field:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+.online-modal .primary {
+  margin-top: 14px;
+}
+.join-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 10px;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.join-row .secondary {
+  width: auto;
+  margin: 0;
+  padding: 14px 16px;
+}
+.code-field {
+  letter-spacing: 6px;
+}
+.online-modal p.online-message {
+  min-height: 21px;
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--amber);
+}
+
+/* Shown in place of the crosshair once your own car is wrecked. */
+.spectate-label {
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 9px 16px;
+  border: 1px solid #edb65b66;
+  background: #122019e8;
+  color: var(--amber);
+  font: 600 17px var(--display);
+  letter-spacing: 1.8px;
+  white-space: nowrap;
+  max-width: 90vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-height: 750px) {
+  .lobby-panel {
+    top: 13%;
+  }
+  #lobby-code {
+    font-size: 48px;
+  }
+  .lobby-panel > p {
+    margin-bottom: 8px;
+  }
+  .lobby-players li {
+    padding: 2px 0;
+    font-size: 14px;
+  }
+}
+@media (max-width: 760px) {
+  .lobby-panel {
+    left: 4%;
+    top: 12%;
+  }
+  #lobby-code {
+    font-size: 48px;
+  }
+  .lobby-players li {
+    font-size: 13px;
+    padding: 4px 0;
+  }
+  .launch-card .online-button {
+    display: block;
+  }
+}

@@ -1,17 +1,37 @@
 import { ARENA, VEHICLES, VEHICLE_IDS, WEAPON_LABELS, WEAPON_ORDER } from './config';
-import { rocketTarget } from './simulation';
-import type { GameEvent, GamePhase, Quality, VehicleId, WeaponId, World } from './types';
+import { cameraTarget, isPractice, outcomeFor, rocketTarget } from './simulation';
+import type { LobbyState } from './net/protocol';
+import type {
+  GameEvent,
+  GamePhase,
+  MatchOutcome,
+  Quality,
+  VehicleId,
+  WeaponId,
+  World,
+} from './types';
 import { WeaponSwitchNotice, WEAPON_NOTICE_FADE_MS } from './weapon-notification';
 import { buildScoreboard } from './scoreboard';
 
 interface Actions {
   select: (id: VehicleId) => void;
   start: () => void;
+  /** Results "run it back": same mode as the match that just ended. */
+  replay: () => void;
+  /** Offline free roam with no bots. */
+  practice: () => void;
   pause: () => void;
   resume: () => void;
   garage: () => void;
   mute: () => void;
   quality: (q: Quality) => void;
+  openOnline: () => void;
+  createRoom: (name: string) => void;
+  joinRoom: (code: string, name: string) => void;
+  /** Leave the room, or cancel a connection attempt that is still in progress. */
+  leaveRoom: () => void;
+  copyCode: () => void;
+  setBots: (count: number) => void;
 }
 const silhouettes: Record<VehicleId, string> = {
   viper:
@@ -46,6 +66,10 @@ export class Interface {
   private messages: { text: string; expires: number; player: boolean }[] = [];
   private radar: CanvasRenderingContext2D;
   private weaponNotice: WeaponSwitchNotice;
+  private lobby: LobbyState | null = null;
+  private online = false;
+  private onlineAvailable = true;
+  private menuOpen = false;
 
   constructor(actions: Actions) {
     this.root = document.getElementById('app')!;
@@ -53,7 +77,7 @@ export class Interface {
       <div class="vignette" aria-hidden="true"></div>
       <header class="topbar">
         <a class="brand" href="#" id="brand" aria-label="Wreckyard — open pause menu during battle"><span class="brand-mark">W</span><span>WRECKYARD<small>VEHICULAR WARFARE</small></span></a>
-        <div class="top-actions"><span class="offline"><i></i> LOCAL // OFFLINE</span><button id="help-button" class="text-button">FIELD MANUAL <span>↗</span></button><button id="mute" class="icon-button" aria-label="Mute sound" title="Toggle sound (M)">SOUND ON</button><label class="quality-label">FX <select id="quality" aria-label="Graphics quality"><option value="high">HIGH</option><option value="low">LOW</option></select></label></div>
+        <div class="top-actions"><span id="net-status" class="offline"><i></i> LOCAL // OFFLINE</span><button id="help-button" class="text-button">FIELD MANUAL <span>↗</span></button><button id="mute" class="icon-button" aria-label="Mute sound" title="Toggle sound (M)">SOUND ON</button><label class="quality-label">FX <select id="quality" aria-label="Graphics quality"><option value="high">HIGH</option><option value="low">LOW</option></select></label></div>
       </header>
       <main id="selection" class="garage">
         <section class="hero-copy"><div class="eyebrow"><span class="live-dot"></span> THE ARENA IS OPEN <span class="line"></span> VOL. 01</div>
@@ -61,28 +85,42 @@ export class Interface {
           <p>Six drivers. One scrapyard.<br>Leave your conscience at the gate.</p>
           <div class="match-tags"><span>01 ARENA</span><b>×</b><span>05 RIVALS</span><b>×</b><span>NO RESPAWNS</span></div>
         </section>
+        <section id="lobby" class="lobby-panel" hidden aria-labelledby="lobby-code-label">
+          <div class="eyebrow"><span class="live-dot"></span> <span id="lobby-code-label">ONLINE ROOM / SHARE THIS CODE</span></div>
+          <div class="lobby-code-row"><strong id="lobby-code">----</strong><button id="copy-code" class="text-button">COPY CODE</button></div>
+          <p>Up to six cars. The host chooses how many bots join, then starts the match.</p>
+          <ol id="lobby-players" class="lobby-players" aria-label="Drivers in this room"></ol>
+          <div id="bot-controls" class="bot-controls"><span>BOTS <strong id="bot-count">5</strong></span><button id="remove-bot" class="text-button" aria-label="Remove a bot">− REMOVE BOT</button><button id="add-bot" class="text-button" aria-label="Add a bot">+ ADD BOT</button></div>
+        </section>
         <aside class="vehicle-caption"><span class="eyebrow">YOUR INSTRUMENT OF DESTRUCTION</span><div><span id="preview-name">HELLION</span><small id="preview-role">STREET BRAWLER</small></div><p id="preview-description"></p></aside>
         <section class="loadout"><div class="section-label"><span><b>01</b> CHOOSE YOUR MACHINE</span><span class="desktop-tag">KEYBOARD REQUIRED</span></div>
           <div class="loadout-row"><div class="vehicle-cards">${VEHICLE_IDS.map((id, i) => {
             const car = VEHICLES[id];
             return `<button class="vehicle-card ${id === 'hellion' ? 'selected' : ''}" data-vehicle="${id}" aria-pressed="${id === 'hellion'}"><div class="card-top"><span>0${i + 1} / ${car.role}</span><i class="selection-dot"></i></div><div class="card-name">${car.name}${carSvg(id)}</div><div class="card-stats"><label>ARMOR <span><i style="width:${(car.health / STAT_MAX.health) * 100}%"></i></span></label><label>SPEED <span><i style="width:${(car.speed / STAT_MAX.speed) * 100}%"></i></span></label><label>HANDLING <span><i style="width:${(car.handling / STAT_MAX.handling) * 100}%"></i></span></label></div></button>`;
           }).join('')}</div>
-          <div class="launch-card"><div><span class="eyebrow">NEXT STOP</span><h2>THE SCRAPYARD</h2><p>Industrial district · Last car standing</p></div><button id="start" class="primary">ENTER THE YARD <span>↗</span></button><small>GUNS LOADED. NO SECOND CHANCES.</small></div></div>
+          <div class="launch-card"><div><span class="eyebrow">NEXT STOP</span><h2>THE SCRAPYARD</h2><p id="launch-detail">Industrial district · Last car standing</p></div><button id="start" class="primary">ENTER THE YARD <span>↗</span></button><button id="online-button" class="secondary online-button">PLAY ONLINE</button><button id="practice-button" class="text-button practice-button" title="Drive the yard alone: no bots, no time limit">PRACTICE · NO BOTS</button><small id="launch-note">GUNS LOADED. NO SECOND CHANCES.</small></div></div>
         </section>
         <footer class="garage-footer"><span>BUILT FROM SCRAP. DRIVEN BY SPITE.</span><span>WASD TO DRIVE <b>·</b> LEFT CLICK TO FIRE <b>·</b> TAB TO SWITCH</span><span>34° 06′ N / YARD 06</span></footer>
       </main>
       <section id="hud" class="hud" hidden aria-label="Battle status">
-        <div class="zone-label"><span class="eyebrow">DEATHMATCH / ZONE 06</span><strong>THE SCRAPYARD</strong><span id="match-time">00:00</span></div>
+        <div class="zone-label"><span id="zone-mode" class="eyebrow">DEATHMATCH / ZONE 06</span><strong>THE SCRAPYARD</strong><span id="match-time">00:00</span></div>
         <div class="survivors"><span class="eyebrow">STILL STANDING</span><strong id="remaining">06</strong><div id="driver-dots"></div></div>
         <div class="radar-wrap"><div class="radar-heading">PROXIMITY SCAN <span>N ↑</span></div><canvas id="radar" width="180" height="180" aria-label="Arena radar: green is you, orange marks enemies"></canvas><div class="radar-legend"><span>● YOU</span><span>● HOSTILE</span></div></div>
         <div id="feed" class="kill-feed" aria-live="polite"></div>
-        <div class="reticle" aria-hidden="true"><span></span><i></i><b></b></div><div id="lock-label" class="lock-label"></div>
+        <div id="spectate" class="spectate-label" role="status" hidden></div><div class="reticle" aria-hidden="true"><span></span><i></i><b></b></div><div id="lock-label" class="lock-label"></div>
         <div id="weapon-switch" class="weapon-switch" role="status" aria-live="polite" aria-atomic="true" hidden></div>
         <div class="status-panel"><div class="status-name"><span id="hud-car">HELLION</span><span id="kills">0 WRECKS</span></div><div class="armor-line"><span>ARMOR INTEGRITY</span><strong id="hp-number">120</strong></div><div id="hp-meter" class="meter health" role="progressbar" aria-label="Armor" aria-valuemin="0" aria-valuemax="100"><i id="hp-fill"></i></div><div class="boost-line"><span>BOOST <kbd>SHIFT</kbd></span><div id="boost-meter" class="meter boost" role="progressbar" aria-label="Boost" aria-valuemin="0" aria-valuemax="100"><i id="boost-fill"></i></div></div><div class="speed"><strong id="speed">000</strong><span>KM/H</span><small id="drive-status">IDLE</small></div></div>
         <div class="weapons-panel"><div id="weapon-bullet" class="weapon is-selected" role="group" aria-label="Machine gun selected; press 1"><kbd>1</kbd><span>MACHINE GUN<small>LMB / J · HOLD TO FIRE</small></span><strong>∞</strong></div><div id="weapon-rocket" class="weapon rocket" role="group" aria-label="Homing rocket; press 2"><kbd>2</kbd><span>HOMING ROCKET<small id="rocket-status">LMB / K · FIRE</small></span><strong id="rockets">04</strong></div></div>
         <div class="bottom-controls"><span><kbd>W A S D</kbd> DRIVE</span><span><kbd>SPACE</kbd> DRIFT</span><span><kbd>LMB</kbd> FIRE</span><span><kbd>TAB</kbd> WEAPON</span><button id="pause-button"><kbd>ESC</kbd> PAUSE</button></div><div id="damage-flash" class="damage-flash"></div>
       </section>
-      <section id="pause" class="modal-backdrop" hidden><div class="modal"><div class="eyebrow">TAKE A BREATH</div><h2>ENGINE IDLE.</h2><p>The yard can wait. Your rivals are paused too.</p><button id="resume" class="primary">BACK TO THE FIGHT <span>↗</span></button><button id="pause-garage" class="secondary">RETURN TO GARAGE</button></div></section>
+      <section id="pause" class="modal-backdrop" hidden><div class="modal"><div id="pause-eyebrow" class="eyebrow">TAKE A BREATH</div><h2 id="pause-title">ENGINE IDLE.</h2><p id="pause-text">The yard can wait. Your rivals are paused too.</p><button id="resume" class="primary">BACK TO THE FIGHT <span>↗</span></button><button id="pause-garage" class="secondary">RETURN TO GARAGE</button></div></section>
+      <section id="online" class="modal-backdrop" hidden><div class="modal online-modal" role="dialog" aria-modal="true" aria-labelledby="online-title"><div class="eyebrow">WRECKYARD / ONLINE</div><h2 id="online-title">FIND A YARD.</h2><p>Create a room and share its four-letter code, or join a friend's room. Bots fill any empty seats.</p>
+        <label class="field" for="callsign">CALLSIGN</label><input id="callsign" class="text-field" maxlength="16" autocomplete="nickname" spellcheck="false" placeholder="DRIVER">
+        <button id="create-room" class="primary">CREATE ROOM <span>↗</span></button>
+        <div class="join-row"><div><label class="field" for="room-code">ROOM CODE</label><input id="room-code" class="text-field code-field" maxlength="4" autocomplete="off" spellcheck="false" placeholder="ABCD"></div><button id="join-room" class="secondary">JOIN ROOM</button></div>
+        <p id="online-message" class="online-message" role="status" aria-live="polite"></p>
+        <button id="online-close" class="secondary">BACK TO GARAGE</button></div></section>
+      <section id="net-error" class="modal-backdrop" hidden><div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="net-error-title" aria-describedby="net-error-text"><div class="eyebrow">WRECKYARD / CONNECTION</div><h2 id="net-error-title">CONNECTION LOST.</h2><p id="net-error-text"></p><button id="net-error-close" class="primary">BACK TO GARAGE <span>↗</span></button></div></section>
       <section id="results" class="modal-backdrop" hidden><div class="modal results-modal"><div id="result-eyebrow" class="eyebrow">MATCH COMPLETE</div><h2 id="result-title">YARD KING.</h2><p id="result-description"></p><div class="result-stats"><div><strong id="result-kills">0</strong><span>WRECKS</span></div><div><strong id="result-time">00:00</strong><span>SURVIVED</span></div><div><strong id="result-car">HELLION</strong><span>YOUR MACHINE</span></div></div>
         <section class="scoreboard" aria-labelledby="scoreboard-heading"><div class="scoreboard-heading"><h3 id="scoreboard-heading">MATCH SCOREBOARD</h3><span id="scoreboard-count">06 DRIVERS</span></div><div class="scoreboard-scroll"><table class="scoreboard-table" aria-labelledby="scoreboard-heading" aria-describedby="scoreboard-note"><thead><tr><th scope="col">#</th><th scope="col">DRIVER / MACHINE</th><th scope="col">WRECKS</th><th scope="col">SURVIVED</th><th scope="col">STATUS</th></tr></thead><tbody id="scoreboard-body"></tbody></table></div><p id="scoreboard-note" class="scoreboard-note">Snapshot at match end. Survivors first, then wrecks and survival time.</p></section>
         <button id="replay" class="primary">RUN IT BACK <span>R ↗</span></button><button id="results-garage" class="secondary">CHOOSE ANOTHER MACHINE</button></div></section>
@@ -101,7 +139,8 @@ export class Interface {
     this.radar = (this.el('radar') as HTMLCanvasElement).getContext('2d')!;
     const click = (id: string, fn: () => void) => this.el(id).addEventListener('click', fn);
     click('start', actions.start);
-    click('replay', actions.start);
+    click('replay', actions.replay);
+    click('practice-button', actions.practice);
     click('resume', actions.resume);
     click('pause-button', actions.pause);
     click('pause-garage', actions.garage);
@@ -117,6 +156,36 @@ export class Interface {
       (this.el('manual') as HTMLDialogElement).showModal();
     });
     click('close-help', () => this.closeManual());
+    click('online-button', () => (this.lobby ? actions.leaveRoom() : actions.openOnline()));
+    click('online-close', actions.leaveRoom);
+    click('create-room', () => actions.createRoom(this.callsign()));
+    const join = () => {
+      const code = this.roomCode();
+      if (code.length === 4) actions.joinRoom(code, this.callsign());
+      else {
+        this.setOnlineMessage('Enter the four-letter room code.');
+        this.el('room-code').focus();
+      }
+    };
+    click('join-room', join);
+    click('copy-code', actions.copyCode);
+    click('add-bot', () => this.lobby && actions.setBots(this.lobby.bots + 1));
+    click('remove-bot', () => this.lobby && actions.setBots(this.lobby.bots - 1));
+    click('net-error-close', () => (this.el('net-error').hidden = true));
+    const codeInput = this.el('room-code') as HTMLInputElement;
+    codeInput.addEventListener('input', () => {
+      codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z]/g, '');
+    });
+    codeInput.addEventListener('keydown', e => e.key === 'Enter' && join());
+    this.el('callsign').addEventListener(
+      'keydown',
+      e => e.key === 'Enter' && actions.createRoom(this.callsign()),
+    );
+    this.el('online').addEventListener('keydown', e => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      actions.leaveRoom();
+    });
     this.el('quality').addEventListener('change', e =>
       actions.quality((e.target as HTMLSelectElement).value as Quality),
     );
@@ -157,6 +226,154 @@ export class Interface {
   setQuality(q: Quality): void {
     (this.el('quality') as HTMLSelectElement).value = q;
   }
+  callsign(): string {
+    return (this.el('callsign') as HTMLInputElement).value;
+  }
+  private roomCode(): string {
+    return (this.el('room-code') as HTMLInputElement).value;
+  }
+
+  /** Disable online play when this build has no server configured. */
+  setOnlineAvailable(available: boolean): void {
+    this.onlineAvailable = available;
+    this.renderLaunch();
+  }
+  showOnline(open: boolean, callsign = ''): void {
+    this.el('online').hidden = !open;
+    if (!open) return;
+    const input = this.el('callsign') as HTMLInputElement;
+    if (!input.value) input.value = callsign;
+    this.setOnlineMessage('');
+    input.focus();
+    input.select();
+  }
+  isOnlineOpen(): boolean {
+    return !this.el('online').hidden;
+  }
+  /** Status line in the online dialog; `busy` blocks double submissions while connecting. */
+  setOnlineMessage(text: string, busy = false): void {
+    this.text('online-message', text);
+    for (const id of ['create-room', 'join-room'])
+      (this.el(id) as HTMLButtonElement).disabled = busy;
+  }
+  setNetStatus(text: string | null): void {
+    const status = this.el('net-status');
+    const label = text ?? 'LOCAL // OFFLINE';
+    if (status.textContent?.trim() === label) return;
+    status.replaceChildren(document.createElement('i'), ` ${label}`);
+    status.classList.toggle('is-online', text !== null);
+  }
+  /** Switch result and pause wording between the offline and online rules. */
+  setOnline(online: boolean): void {
+    this.online = online;
+    this.text('pause-eyebrow', online ? 'MENU / MATCH STILL RUNNING' : 'TAKE A BREATH');
+    this.text('pause-title', online ? 'EYES OFF THE ROAD.' : 'ENGINE IDLE.');
+    this.text(
+      'pause-text',
+      online
+        ? 'The match keeps running while this menu is open. Your car coasts with no input.'
+        : 'The yard can wait. Your rivals are paused too.',
+    );
+    this.text('pause-garage', online ? 'LEAVE ROOM' : 'RETURN TO GARAGE');
+    this.label('replay', online ? 'BACK TO LOBBY' : 'RUN IT BACK', 'R ↗');
+    this.text('results-garage', online ? 'LEAVE ROOM' : 'CHOOSE ANOTHER MACHINE');
+    this.renderLaunch();
+  }
+  setMenuOpen(open: boolean): void {
+    this.menuOpen = open;
+    this.el('pause').hidden = !open && this.phase !== 'paused';
+    if (open) this.el('resume').focus({ preventScroll: true });
+  }
+  setLobby(lobby: LobbyState | null): void {
+    this.lobby = lobby;
+    this.el('lobby').hidden = !lobby;
+    this.el('selection').classList.toggle('in-lobby', !!lobby);
+    if (lobby) {
+      this.text('lobby-code', lobby.code);
+      const rows = lobby.players.map(player => {
+        const li = document.createElement('li');
+        li.classList.toggle('is-you', player.id === lobby.you);
+        const name = document.createElement('span');
+        name.className = 'lobby-name';
+        name.textContent = player.name;
+        const car = document.createElement('small');
+        car.textContent = VEHICLES[player.vehicle].name;
+        const tags = document.createElement('b');
+        tags.textContent = [player.host ? 'HOST' : '', player.id === lobby.you ? 'YOU' : '']
+          .filter(Boolean)
+          .join(' · ');
+        li.append(name, car, tags);
+        return li;
+      });
+      for (let seat = lobby.players.length; seat < 6; seat++) {
+        const li = document.createElement('li');
+        const bot = seat < lobby.players.length + lobby.bots;
+        li.className = bot ? 'is-bot' : 'is-open';
+        li.textContent = bot ? 'BOT' : 'OPEN SEAT';
+        rows.push(li);
+      }
+      this.el('lobby-players').replaceChildren(...rows);
+      const host = lobby.players.find(p => p.id === lobby.you)?.host ?? false;
+      const free = 6 - lobby.players.length;
+      this.text('bot-count', String(lobby.bots));
+      this.el('bot-controls').classList.toggle('is-host', host);
+      (this.el('add-bot') as HTMLButtonElement).disabled = !host || lobby.bots >= free;
+      (this.el('remove-bot') as HTMLButtonElement).disabled = !host || lobby.bots <= 0;
+      this.el('add-bot').hidden = !host;
+      this.el('remove-bot').hidden = !host;
+    }
+    this.renderLaunch();
+  }
+  showNetError(title: string, text: string): void {
+    this.text('net-error-title', title);
+    this.text('net-error-text', text);
+    this.el('net-error').hidden = false;
+    this.el('net-error-close').focus({ preventScroll: true });
+  }
+
+  private label(id: string, text: string, hint: string): void {
+    const hintEl = document.createElement('span');
+    hintEl.textContent = hint;
+    this.el(id).replaceChildren(`${text} `, hintEl);
+  }
+  /** The garage launch card doubles as the lobby's start control. */
+  private renderLaunch(): void {
+    const start = this.el('start') as HTMLButtonElement;
+    const onlineButton = this.el('online-button') as HTMLButtonElement;
+    const lobby = this.lobby;
+    if (lobby) {
+      const host = lobby.players.find(p => p.id === lobby.you)?.host ?? false;
+      const humans = lobby.players.length;
+      const bots = lobby.bots;
+      const solo = humans + bots === 1;
+      this.label(
+        'start',
+        !host ? 'WAITING FOR HOST' : solo ? 'START PRACTICE' : 'START MATCH',
+        host ? '↗' : '…',
+      );
+      start.disabled = !host;
+      this.text(
+        'launch-detail',
+        solo
+          ? 'Practice · No opponents · Free roam'
+          : `${humans} driver${humans === 1 ? '' : 's'} · ${bots ? `${bots} bot${bots === 1 ? '' : 's'}` : 'No bots'} · Last car standing`,
+      );
+      this.text('launch-note', `ROOM ${lobby.code} · SHARE THE CODE`);
+      onlineButton.textContent = 'LEAVE ROOM';
+      onlineButton.disabled = false;
+      this.el('practice-button').hidden = true;
+    } else {
+      this.el('practice-button').hidden = false;
+      this.label('start', 'ENTER THE YARD', '↗');
+      start.disabled = false;
+      this.text('launch-detail', 'Industrial district · Last car standing');
+      this.text('launch-note', 'GUNS LOADED. NO SECOND CHANCES.');
+      onlineButton.textContent = this.onlineAvailable
+        ? 'PLAY ONLINE'
+        : 'ONLINE PLAY NOT CONFIGURED';
+      onlineButton.disabled = !this.onlineAvailable;
+    }
+  }
   isManualOpen(): boolean {
     return (this.el('manual') as HTMLDialogElement).open;
   }
@@ -175,43 +392,37 @@ export class Interface {
     this.el('feed').replaceChildren();
     this.el('scoreboard-body').replaceChildren();
   }
-  event(e: GameEvent): void {
-    if (e.type === 'kill' || (e.type === 'pickup' && e.owner === 0)) {
+  event(e: GameEvent, localId = 0): void {
+    if (e.type === 'kill' || (e.type === 'pickup' && e.owner === localId)) {
       this.messages.unshift({
         text: e.text ?? '',
         expires: performance.now() + 5000,
-        player: e.owner === 0,
+        player: e.owner === localId,
       });
       this.messages = this.messages.slice(0, 4);
     }
   }
-  update(world: World): void {
-    const player = world.vehicles[0];
+  update(world: World, localId = 0): void {
+    const player = world.vehicles[localId];
     if (this.phase !== world.phase) {
       this.weaponNotice.clear();
       this.phase = world.phase;
       this.el('selection').hidden = world.phase !== 'selection';
       this.el('hud').hidden = world.phase === 'selection';
-      this.el('pause').hidden = world.phase !== 'paused';
-      this.el('results').hidden = world.phase !== 'victory' && world.phase !== 'defeat';
+      this.el('pause').hidden =
+        world.phase !== 'paused' && !(this.menuOpen && world.phase === 'playing');
+      this.el('results').hidden = world.phase !== 'over';
       document.body.dataset.phase = world.phase;
-      if (world.phase === 'victory' || world.phase === 'defeat') {
-        const won = world.phase === 'victory';
-        this.text('result-title', won ? 'YARD KING.' : 'TOTALLED.');
-        this.text(
-          'result-eyebrow',
-          won ? 'VICTORY / LAST CAR STANDING' : 'DEFEAT / END OF THE ROAD',
-        );
-        this.text(
-          'result-description',
-          won
-            ? 'Five rivals entered your rearview. None made it out.'
-            : 'The yard keeps the wreckage. You get another shot.',
-        );
+      const practice = isPractice(world);
+      this.text('zone-mode', practice ? 'PRACTICE / ZONE 06' : 'DEATHMATCH / ZONE 06');
+      const outcome = outcomeFor(world, localId);
+      if (outcome) {
+        if (practice) this.describePractice();
+        else this.describeResult(world, outcome);
         this.text('result-kills', String(player.kills));
         this.text('result-time', timeText(world.time));
         this.text('result-car', player.def.name);
-        this.renderScoreboard(world);
+        this.renderScoreboard(world, localId);
         this.el('results').querySelector<HTMLElement>('.results-modal')!.scrollTop = 0;
         this.el('replay').focus({ preventScroll: true });
       } else if (world.phase === 'paused') this.el('resume').focus({ preventScroll: true });
@@ -223,7 +434,7 @@ export class Interface {
     this.text('remaining', String(alive).padStart(2, '0'));
     this.text('match-time', timeText(world.time));
     const dots = world.vehicles
-      .map(v => `<i class="${v.dead ? 'dead' : v.id === 0 ? 'you' : ''}"></i>`)
+      .map(v => `<i class="${v.dead ? 'dead' : v.id === localId ? 'you' : ''}"></i>`)
       .join('');
     if (this.el('driver-dots').innerHTML !== dots) this.el('driver-dots').innerHTML = dots;
     this.text('hud-car', player.def.name);
@@ -270,7 +481,19 @@ export class Interface {
             ? 'LMB / K · TARGET LOCKED'
             : 'LMB / K · FIRE',
     );
-    this.text('lock-label', rocketSelected && locked && player.rockets > 0 ? '◇ ROCKET LOCK' : '');
+    this.text(
+      'lock-label',
+      rocketSelected && locked && player.rockets > 0 && !player.dead ? '◇ ROCKET LOCK' : '',
+    );
+    const spectating = player.dead && world.phase === 'playing';
+    this.el('spectate').hidden = !spectating;
+    if (spectating) {
+      const followed = cameraTarget(world, localId);
+      this.text(
+        'spectate',
+        followed.id === localId ? 'WRECKED · SPECTATING' : `WRECKED · WATCHING ${followed.name}`,
+      );
+    }
     this.el('damage-flash').style.opacity = world.time - player.lastHit < 0.18 ? '0.5' : '0';
     this.messages = this.messages.filter(m => m.expires > performance.now());
     const feed = this.el('feed');
@@ -284,11 +507,38 @@ export class Interface {
         }),
       );
     }
-    this.drawRadar(world);
+    this.drawRadar(world, localId);
   }
 
-  private renderScoreboard(world: World): void {
-    const standings = buildScoreboard(world);
+  private describePractice(): void {
+    this.text('result-title', 'PRACTICE OVER.');
+    this.text('result-eyebrow', 'PRACTICE / NO OPPONENTS');
+    this.text(
+      'result-description',
+      'The yard got you this time: walls, barrels and your own rockets all bite.',
+    );
+  }
+  private describeResult(world: World, outcome: MatchOutcome): void {
+    const won = outcome === 'victory';
+    this.text('result-title', won ? 'YARD KING.' : 'TOTALLED.');
+    this.text('result-eyebrow', won ? 'VICTORY / LAST CAR STANDING' : 'DEFEAT / END OF THE ROAD');
+    const winner = world.winner === null ? undefined : world.vehicles[world.winner];
+    this.text(
+      'result-description',
+      won
+        ? this.online
+          ? 'Every rival entered your rearview. None made it out.'
+          : 'Five rivals entered your rearview. None made it out.'
+        : this.online
+          ? winner
+            ? `${winner.name} drives out of the yard. You get another shot.`
+            : 'Nobody drove out. The yard keeps the wreckage.'
+          : 'The yard keeps the wreckage. You get another shot.',
+    );
+  }
+
+  private renderScoreboard(world: World, localId: number): void {
+    const standings = buildScoreboard(world, localId);
     this.text('scoreboard-count', `${String(standings.length).padStart(2, '0')} DRIVERS`);
     const fragment = document.createDocumentFragment();
     for (const entry of standings) {
@@ -322,7 +572,7 @@ export class Interface {
     this.el('scoreboard-body').replaceChildren(fragment);
   }
 
-  private drawRadar(world: World): void {
+  private drawRadar(world: World, localId: number): void {
     const ctx = this.radar,
       scale = 170 / (ARENA * 2),
       pos = (n: number) => 90 + n * scale;
@@ -360,7 +610,7 @@ export class Interface {
       ctx.save();
       ctx.translate(pos(car.x), pos(car.z));
       ctx.rotate(Math.PI - car.heading);
-      ctx.fillStyle = car.id === 0 ? '#b7e2be' : '#ee9c5c';
+      ctx.fillStyle = car.id === localId ? '#b7e2be' : '#ee9c5c';
       ctx.beginPath();
       ctx.moveTo(0, -5);
       ctx.lineTo(-3.5, 4);

@@ -19,6 +19,7 @@ import {
   fireWeapon,
   FixedStepper,
   moveVehicle,
+  outcomeFor,
   rocketTarget,
   stepWorld,
   updatePickups,
@@ -77,7 +78,7 @@ describe('fixed-step driving', () => {
         clock = new FixedStepper();
       const input = { ...emptyInput(), throttle: 1 };
       for (let i = 0; i < fps * 2; i++)
-        clock.advance(1 / fps, () => stepWorld(world, input, STEP, false));
+        clock.advance(1 / fps, () => stepWorld(world, { 0: input }, STEP, false));
       return { z: world.vehicles[0].z, time: world.time };
     };
     const baseline = drive(60);
@@ -319,21 +320,25 @@ describe('supplies and match lifecycle', () => {
     const world = openWorld();
     world.phase = 'paused';
     const before = JSON.stringify(world);
-    stepWorld(world, { ...emptyInput(), throttle: 1, gun: true });
+    stepWorld(world, { 0: { ...emptyInput(), throttle: 1, gun: true } });
     expect(JSON.stringify(world)).toBe(before);
   });
   it('ends with victory when every rival is gone', () => {
     const world = openWorld();
     world.vehicles.slice(1).forEach(v => damage(world, v, 1000, 0));
-    stepWorld(world, emptyInput(), STEP, false);
-    expect(world.phase).toBe('victory');
+    stepWorld(world, { 0: emptyInput() }, STEP, false);
+    expect(world.phase).toBe('over');
+    expect(world.winner).toBe(0);
+    expect(outcomeFor(world, 0)).toBe('victory');
     expect(world.vehicles[0].kills).toBe(5);
   });
   it('gives defeat precedence for simultaneous player and final-rival destruction', () => {
     const world = openWorld();
     world.vehicles.forEach(v => damage(world, v, 1000));
-    stepWorld(world, emptyInput(), STEP, false);
-    expect(world.phase).toBe('defeat');
+    stepWorld(world, { 0: emptyInput() }, STEP, false);
+    expect(world.phase).toBe('over');
+    expect(world.winner).toBeNull();
+    expect(outcomeFor(world, 0)).toBe('defeat');
   });
   it('starts replay with independent fresh state', () => {
     const old = openWorld();
@@ -383,7 +388,7 @@ describe('bot navigation', () => {
     const initial = world.vehicles.slice(1).map(v => ({ x: v.x, z: v.z }));
     let fired = 0;
     for (let i = 0; i < 60 * 30 && world.phase === 'playing'; i++) {
-      stepWorld(world, emptyInput());
+      stepWorld(world, { 0: emptyInput() });
       fired += world.events.filter(e => e.type === 'gun' || e.type === 'rocket').length;
     }
     expect(world.vehicles.slice(1).some((v, i) => distance(v, initial[i]) > 10)).toBe(true);

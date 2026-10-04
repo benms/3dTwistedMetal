@@ -12,7 +12,10 @@ export interface ScoreboardRow {
 }
 
 /** A snapshot of all drivers when this round ends; it never reorders the world. */
-export function buildScoreboard(world: Pick<World, 'time' | 'vehicles'>): ScoreboardRow[] {
+export function buildScoreboard(
+  world: Pick<World, 'time' | 'vehicles'>,
+  localId = 0,
+): ScoreboardRow[] {
   const rows = world.vehicles.map(vehicle => ({
     rank: 0,
     driverId: vehicle.id,
@@ -21,7 +24,7 @@ export function buildScoreboard(world: Pick<World, 'time' | 'vehicles'>): Scoreb
     kills: vehicle.kills,
     survivalSeconds: vehicle.dead ? (vehicle.eliminatedAt ?? world.time) : world.time,
     alive: !vehicle.dead,
-    isPlayer: vehicle.id === 0,
+    isPlayer: vehicle.id === localId,
   }));
   rows.sort(
     (a, b) =>

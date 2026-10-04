@@ -21,16 +21,61 @@ import {
   segmentCircle,
 } from './math';
 import { botInput, buildWaypoints } from './navigation';
-import type { InputState, Projectile, Vec2, Vehicle, VehicleId, World } from './types';
+import type {
+  DriverSpec,
+  InputState,
+  MatchOutcome,
+  Projectile,
+  Vec2,
+  Vehicle,
+  VehicleId,
+  World,
+} from './types';
 
-export function createWorld(selected: VehicleId = 'hellion', seed = 18471): World {
-  const names = ['YOU', 'RUST REAPER', 'DEADWEIGHT', 'JUNK DOG', 'ROAD HAZARD', 'BLACKOUT'];
-  const vehicles: Vehicle[] = SPAWNS.map((p, id) => {
-    const def = VEHICLES[id === 0 ? selected : VEHICLE_IDS[(id - 1) % 3]];
+export const BOT_NAMES = ['RUST REAPER', 'DEADWEIGHT', 'JUNK DOG', 'ROAD HAZARD', 'BLACKOUT'];
+export const MAX_DRIVERS = SPAWNS.length;
+
+/** Humans take the first seats, then `bots` bots (by default, enough to fill the grid). */
+export function fillDrivers(
+  humans: readonly { name: string; vehicle: VehicleId }[],
+  bots = MAX_DRIVERS,
+): DriverSpec[] {
+  const drivers: DriverSpec[] = humans
+    .slice(0, MAX_DRIVERS)
+    .map(h => ({ name: h.name, vehicle: h.vehicle, human: true }));
+  const seats = Math.min(MAX_DRIVERS, drivers.length + Math.max(0, Math.floor(bots)));
+  for (let seat = drivers.length; seat < seats; seat++)
+    drivers.push({
+      name: BOT_NAMES[(seat - 1 + BOT_NAMES.length) % BOT_NAMES.length],
+      vehicle: VEHICLE_IDS[(seat - 1 + VEHICLE_IDS.length) % VEHICLE_IDS.length],
+      human: false,
+    });
+  return drivers;
+}
+
+/** The offline match: you in seat 0 against five bots, or alone for practice (`bots` 0). */
+export function createWorld(
+  selected: VehicleId = 'hellion',
+  seed = 18471,
+  bots = BOT_NAMES.length,
+): World {
+  return createMatch(fillDrivers([{ name: 'YOU', vehicle: selected }], bots), seed);
+}
+
+/** A lone car with no opponents: free roam that only ends if the yard wrecks you. */
+export function isPractice(world: Pick<World, 'vehicles'>): boolean {
+  return world.vehicles.length === 1;
+}
+
+export function createMatch(drivers: readonly DriverSpec[], seed = 18471): World {
+  const vehicles: Vehicle[] = drivers.slice(0, MAX_DRIVERS).map((driver, id) => {
+    const p = SPAWNS[id];
+    const def = VEHICLES[driver.vehicle];
     return {
       ...p,
       id,
-      name: names[id],
+      name: driver.name,
+      human: driver.human,
       def,
       prevX: p.x,
       prevZ: p.z,
@@ -64,6 +109,7 @@ export function createWorld(selected: VehicleId = 'hellion', seed = 18471): Worl
   });
   return {
     phase: 'selection',
+    winner: null,
     time: 0,
     seed,
     vehicles,
@@ -169,7 +215,8 @@ export function explode(
   }
 }
 
-export function moveVehicle(world: World, car: Vehicle, input: InputState, dt: number): void {
+/** Pure driving physics: no collisions, damage or events, so clients can predict with it. */
+export function integrateVehicle(car: Vehicle, input: InputState, dt: number): void {
   const speed = car.vx * Math.sin(car.heading) + car.vz * Math.cos(car.heading);
   const steering =
     (car.def.handling * clamp(Math.abs(speed) / 8, 0, 1)) / (1 + Math.abs(speed) / 65);
@@ -189,6 +236,10 @@ export function moveVehicle(world: World, car: Vehicle, input: InputState, dt: n
   car.vz = fz * forward - fx * side;
   car.x += car.vx * dt;
   car.z += car.vz * dt;
+}
+
+export function moveVehicle(world: World, car: Vehicle, input: InputState, dt: number): void {
+  integrateVehicle(car, input, dt);
   resolveArenaCollision(world, car);
   for (const barrel of world.barrels)
     if (barrel.alive && distance(car, barrel) < car.def.radius + 0.7) {
@@ -197,7 +248,8 @@ export function moveVehicle(world: World, car: Vehicle, input: InputState, dt: n
     }
 }
 
-export function resolveArenaCollision(world: World, car: Vehicle): void {
+/** Push a car out of cover and the fence; prediction passes applyImpact=false to skip damage. */
+export function resolveArenaCollision(world: World, car: Vehicle, applyImpact = true): void {
   for (let pass = 0; pass < 2; pass++)
     for (const obstacle of world.obstacles) {
       const hit = circleBox(car, car.def.radius, obstacle);
@@ -208,14 +260,14 @@ export function resolveArenaCollision(world: World, car: Vehicle): void {
       if (inward < 0) {
         car.vx -= hit.x * inward * 1.15;
         car.vz -= hit.z * inward * 1.15;
-        impact(world, car, -inward * 0.33, -1);
+        if (applyImpact) impact(world, car, -inward * 0.33, -1);
       }
     }
   const edge = ARENA - car.def.radius;
   for (const axis of ['x', 'z'] as const) {
     if (Math.abs(car[axis]) > edge) {
       const velocity = axis === 'x' ? 'vx' : 'vz';
-      impact(world, car, Math.abs(car[velocity]) * 0.3, -1);
+      if (applyImpact) impact(world, car, Math.abs(car[velocity]) * 0.3, -1);
       car[axis] = clamp(car[axis], -edge, edge);
       car[velocity] *= -0.2;
     }
@@ -425,7 +477,16 @@ export function updatePickups(world: World, dt: number): void {
   }
 }
 
-export function stepWorld(world: World, input: InputState, dt = STEP, simulateBots = true): void {
+/**
+ * Advance one fixed step. Human cars read `inputs[id]`, falling back to their previous
+ * controls when no fresh input arrived; bot cars drive themselves.
+ */
+export function stepWorld(
+  world: World,
+  inputs: Readonly<Record<number, InputState>>,
+  dt = STEP,
+  simulateBots = true,
+): void {
   world.events.length = 0;
   if (world.phase !== 'playing') return;
   world.time += dt;
@@ -437,7 +498,11 @@ export function stepWorld(world: World, input: InputState, dt = STEP, simulateBo
     car.gunCooldown = Math.max(0, car.gunCooldown - dt);
     car.rocketCooldown = Math.max(0, car.rocketCooldown - dt);
     car.impactCooldown = Math.max(0, car.impactCooldown - dt);
-    car.control = car.id === 0 ? input : simulateBots ? botInput(world, car, dt) : emptyInput();
+    car.control = car.human
+      ? (inputs[car.id] ?? car.control)
+      : simulateBots
+        ? botInput(world, car, dt)
+        : emptyInput();
     moveVehicle(world, car, car.control, dt);
   }
   collideVehicles(world);
@@ -450,8 +515,32 @@ export function stepWorld(world: World, input: InputState, dt = STEP, simulateBo
     }
   updateProjectiles(world, dt);
   updatePickups(world, dt);
-  if (world.vehicles[0].dead) world.phase = 'defeat';
-  else if (world.vehicles.slice(1).every(v => v.dead)) world.phase = 'victory';
+  // The round ends once no human is left driving or a single car remains; practice has
+  // no rivals to outlast, so it only ends with your own wreck.
+  const alive = world.vehicles.filter(v => !v.dead);
+  const lastStanding = !isPractice(world) && alive.length <= 1;
+  if (lastStanding || !alive.some(v => v.human)) {
+    world.phase = 'over';
+    world.winner = alive.length === 1 ? alive[0].id : null;
+  }
+}
+
+/** Victory only for the sole survivor; a simultaneous final wreck is a defeat for everyone. */
+export function outcomeFor(world: World, localId: number): MatchOutcome | null {
+  if (world.phase !== 'over') return null;
+  return world.winner === localId ? 'victory' : 'defeat';
+}
+
+/** The car the chase camera follows: yours, or once wrecked, the leading survivor. */
+export function cameraTarget(world: World, localId: number): Vehicle {
+  const own = world.vehicles[localId];
+  if (own && !own.dead) return own;
+  // Prefer another human, then whoever has the most wrecks.
+  const score = (car: Vehicle) => (car.human ? 1000 : 0) + car.kills;
+  let best: Vehicle | undefined;
+  for (const car of world.vehicles)
+    if (!car.dead && (!best || score(car) > score(best))) best = car;
+  return best ?? own ?? world.vehicles[0];
 }
 
 export class FixedStepper {

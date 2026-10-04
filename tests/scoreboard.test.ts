@@ -22,7 +22,7 @@ describe('end-of-match scoreboard', () => {
   it('puts the last survivor first even if a wrecked rival has more kills', () => {
     const world = createWorld();
     world.time = 80;
-    world.phase = 'victory';
+    world.phase = 'over';
     world.vehicles.slice(1).forEach((car, index) => {
       car.dead = true;
       car.eliminatedAt = 20 + index * 10;
@@ -38,7 +38,7 @@ describe('end-of-match scoreboard', () => {
     const world = createWorld();
     world.time = 40;
     damage(world, world.vehicles[0], 1000, 1);
-    world.phase = 'defeat';
+    world.phase = 'over';
     const rows = buildScoreboard(world);
     expect(rows.filter(row => row.alive)).toHaveLength(5);
     expect(rows[0]).toMatchObject({ driverId: 1, kills: 1, alive: true });

@@ -1,0 +1,48 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "server",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev:server"
+      ],
+      "port": 8787
+    },
+    {
+      "name": "server-lag",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "tsx",
+        "server/index.ts"
+      ],
+      "env": {
+        "LAG_MS": "120",
+        "JITTER_MS": "30"
+      },
+      "port": 8787
+    },
+    {
+      "name": "client",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "preview-docker",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "vite",
+        "preview",
+        "--port",
+        "4173",
+        "--strictPort"
+      ],
+      "port": 4173
+    }
+  ]
+}

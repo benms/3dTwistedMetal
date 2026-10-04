@@ -3,9 +3,12 @@ import { ARENA, VEHICLES } from './config';
 import { angleDelta, clamp, distance, lerp, segmentBox } from './math';
 import { batchStatic, box, buildCar, cylinder, makeSign, material } from './models';
 import type { CarModel } from './models';
+import { cameraTarget } from './simulation';
 import type { GameEvent, Quality, VehicleId, World } from './types';
 
 const EMBER = new THREE.Color(0xa24828);
+// Rival paint by seat; your own car always wears its showroom colour.
+const SEAT_COLORS = [0x6e7d63, 0x799080, 0xa78b62, 0x8a5545, 0x737e83, 0x615d48];
 
 interface Particle {
   x: number;
@@ -26,7 +29,7 @@ export class GameRenderer {
   private camera = new THREE.PerspectiveCamera(52, 1, 0.1, 600);
   private sun = new THREE.DirectionalLight(0xffdab2, 3.3);
   private cars: CarModel[] = [];
-  private carIds: VehicleId[] = [];
+  private carKeys: string[] = [];
   private carCache = new Map<string, CarModel>();
   private showroom = new THREE.Group();
   private previews = new Map<VehicleId, CarModel>();
@@ -59,6 +62,8 @@ export class GameRenderer {
   private smokeTimer = 0;
   private quality: Quality = 'high';
   private flashUntil = new Map<number, number>();
+  private localId = 0;
+  private followed = -1;
   private elapsed = 0;
   private burnt = material(0x252821);
   private ambientDust: THREE.Points;
@@ -302,21 +307,19 @@ export class GameRenderer {
     }
   }
 
-  reset(world: World): void {
+  reset(world: World, localId = 0): void {
+    this.localId = localId;
+    this.followed = -1;
+    for (const extra of this.cars.splice(world.vehicles.length)) this.scene.remove(extra.root);
+    this.carKeys.length = this.cars.length;
     world.vehicles.forEach((car, i) => {
-      if (!this.cars[i] || this.carIds[i] !== car.def.id) {
+      const color = i === localId ? car.def.color : SEAT_COLORS[i % SEAT_COLORS.length];
+      const key = `${i}:${car.def.id}:${color}`;
+      if (!this.cars[i] || this.carKeys[i] !== key) {
         if (this.cars[i]) this.scene.remove(this.cars[i].root);
-        const key = `${i}:${car.def.id}`;
-        if (!this.carCache.has(key))
-          this.carCache.set(
-            key,
-            buildCar(
-              car.def,
-              i === 0 ? car.def.color : [0x799080, 0xa78b62, 0x8a5545, 0x737e83, 0x615d48][i - 1],
-            ),
-          );
+        if (!this.carCache.has(key)) this.carCache.set(key, buildCar(car.def, color));
         this.cars[i] = this.carCache.get(key)!;
-        this.carIds[i] = car.def.id;
+        this.carKeys[i] = key;
         this.scene.add(this.cars[i].root);
       }
       this.cars[i].root.traverse(object => {
@@ -384,7 +387,7 @@ export class GameRenderer {
         this.particle(e.x, 1.1, e.z, e.power, e.type === 'explosion' && i % 3 === 0);
       this.shake = Math.max(
         this.shake,
-        e.power * 0.3 * clamp(1 - distance(e, world.vehicles[0]) / 40, 0, 1),
+        e.power * 0.3 * clamp(1 - distance(e, cameraTarget(world, this.localId)) / 40, 0, 1),
       );
     }
   }
@@ -419,7 +422,7 @@ export class GameRenderer {
         f.scale.y = 0.8 + Math.random() * 0.6;
       });
       model.flash.visible = !car.dead && (this.flashUntil.get(car.id) ?? 0) > this.elapsed;
-      model.health.visible = !car.dead && i !== 0;
+      model.health.visible = !car.dead && i !== this.localId;
       model.health.scale.x = (2.5 * car.hp) / car.def.health;
       if (car.dead && !model.root.userData.dead) {
         model.root.userData.dead = true;
@@ -495,8 +498,11 @@ export class GameRenderer {
       this.camera.fov = window.innerWidth < 900 ? 65 : 48;
       this.cameraReady = false;
     } else {
-      const car = world.vehicles[0],
-        model = this.cars[0].root;
+      const car = cameraTarget(world, this.localId),
+        model = this.cars[car.id].root;
+      // Cut rather than sweep across the yard when the camera switches to a new car.
+      if (this.followed !== car.id) this.cameraReady = false;
+      this.followed = car.id;
       const heading = model.rotation.y,
         speed = Math.hypot(car.vx, car.vz);
       const behind = 11.5 + speed * 0.06;

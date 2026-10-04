@@ -1,4 +1,5 @@
-export type GamePhase = 'selection' | 'playing' | 'paused' | 'victory' | 'defeat';
+export type GamePhase = 'selection' | 'playing' | 'paused' | 'over';
+export type MatchOutcome = 'victory' | 'defeat';
 export type VehicleId = 'viper' | 'hellion' | 'goliath';
 export type WeaponId = 'bullet' | 'rocket';
 export type Quality = 'high' | 'low';
@@ -30,6 +31,12 @@ export interface VehicleDefinition {
   width: number;
   length: number;
 }
+/** One car's seat in a match, in spawn order. */
+export interface DriverSpec {
+  name: string;
+  vehicle: VehicleId;
+  human: boolean;
+}
 export interface Obstacle extends Vec2 {
   w: number;
   d: number;
@@ -50,6 +57,8 @@ export interface BotState {
 export interface Vehicle extends Vec2 {
   id: number;
   name: string;
+  /** Human cars take their controls from player input; the rest are driven by bots. */
+  human: boolean;
   def: VehicleDefinition;
   heading: number;
   prevX: number;
@@ -100,6 +109,8 @@ export interface Waypoint extends Vec2 {
 }
 export interface World {
   phase: GamePhase;
+  /** The sole survivor once the match is over, or null when nobody outlasted the rest. */
+  winner: number | null;
   time: number;
   seed: number;
   vehicles: Vehicle[];

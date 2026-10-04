@@ -101,7 +101,7 @@ describe('selected-weapon controls', () => {
     const state = new ControlState();
     state.press('Digit2');
     state.primary(true);
-    for (let i = 0; i < 10; i++) stepWorld(world, state.read(), STEP, false);
+    for (let i = 0; i < 10; i++) stepWorld(world, { 0: state.read() }, STEP, false);
     expect(world.vehicles[0].control.selectedWeapon).toBe('rocket');
     expect(world.vehicles[0].rockets).toBe(3);
     expect(
@@ -109,7 +109,7 @@ describe('selected-weapon controls', () => {
     ).toHaveLength(1);
     world.vehicles[0].rockets = 0;
     world.vehicles[0].rocketCooldown = 0;
-    stepWorld(world, state.read(), STEP, false);
+    stepWorld(world, { 0: state.read() }, STEP, false);
     expect(world.vehicles[0].rockets).toBe(0);
     expect(
       world.projectiles.filter(p => p.active && p.owner === 0 && p.kind === 'rocket'),

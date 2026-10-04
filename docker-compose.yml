@@ -1,0 +1,16 @@
+# Runs the production server image locally, for parity with the Render deployment.
+# Pair it with `npm run dev` (proxied, http://localhost:5173) or a preview build.
+services:
+  server:
+    build: .
+    image: wreckyard-server
+    ports:
+      - '${SERVER_PORT:-8787}:8787'
+    environment:
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      MAX_ROOMS: ${MAX_ROOMS:-50}
+      SNAPSHOT_HZ: ${SNAPSHOT_HZ:-20}
+      MAX_MSG_PER_SEC: ${MAX_MSG_PER_SEC:-120}
+      SHUTDOWN_GRACE_MS: ${SHUTDOWN_GRACE_MS:-5000}
+    stop_grace_period: 10s
